@@ -1,0 +1,31 @@
+# Local / disposable (never commit)
+.pg_disposable/
+.venv/
+.venv_tci/
+__pycache__/
+*.pyc
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# PGXS / compiler outputs
+*.o
+*.bc
+*.so
+*.dylib
+*.a
+*.dSYM/
+
+# Regression / local bench output
+test/results/
+results/
+benchmark/out/
+out/
+*.dump
+regression.diffs
+regression.out
+tmp_check/
+log/

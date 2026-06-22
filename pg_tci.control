@@ -1,0 +1,7 @@
+# pg_tci extension control
+comment = 'Temporal Coverage Index — packed IAR interval COUNT (0.1.12)'
+default_version = '0.1.12'
+module_pathname = '$libdir/pg_tci'
+relocatable = false
+superuser = true
+requires = ''
