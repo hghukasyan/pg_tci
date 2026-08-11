@@ -1,0 +1,59 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1c s2seal s1n s1x
+step s1c: 
+  SELECT tci.count_at('iso_seal', timestamptz '2024-06-01 11:30+00') AS tci_c;
+
+tci_c
+-----
+    4
+(1 row)
+
+step s2seal: 
+  SELECT tci.seal_bounded('iso_seal', 8192) IS NOT NULL AS sealed;
+
+sealed
+------
+f     
+(1 row)
+
+step s1n: 
+  SELECT count(*) AS native_c FROM iso_seal s
+   WHERE s.started_at <= timestamptz '2024-06-01 11:30+00'
+     AND (s.ended_at IS NULL OR s.ended_at > timestamptz '2024-06-01 11:30+00');
+
+native_c
+--------
+       4
+(1 row)
+
+step s1x: COMMIT;
+
+starting permutation: s2seal s1c s1n s1x
+step s2seal: 
+  SELECT tci.seal_bounded('iso_seal', 8192) IS NOT NULL AS sealed;
+
+sealed
+------
+f     
+(1 row)
+
+step s1c: 
+  SELECT tci.count_at('iso_seal', timestamptz '2024-06-01 11:30+00') AS tci_c;
+
+tci_c
+-----
+    4
+(1 row)
+
+step s1n: 
+  SELECT count(*) AS native_c FROM iso_seal s
+   WHERE s.started_at <= timestamptz '2024-06-01 11:30+00'
+     AND (s.ended_at IS NULL OR s.ended_at > timestamptz '2024-06-01 11:30+00');
+
+native_c
+--------
+       4
+(1 row)
+
+step s1x: COMMIT;

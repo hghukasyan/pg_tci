@@ -1,0 +1,93 @@
+-- Privilege tests for pg_tci 0.1.8 (ACL + session_user gates)
+-- Use SESSION AUTHORIZATION so SECURITY DEFINER checks see the right identity.
+CREATE EXTENSION pg_tci;
+CREATE ROLE tci_owner;
+CREATE ROLE tci_reader;
+CREATE ROLE tci_stranger;
+CREATE TABLE public.owner_sessions (
+  id bigserial PRIMARY KEY,
+  started_at timestamptz NOT NULL,
+  ended_at timestamptz
+);
+ALTER TABLE public.owner_sessions OWNER TO tci_owner;
+GRANT SELECT ON public.owner_sessions TO tci_reader;
+-- stranger: no grants
+SET SESSION AUTHORIZATION tci_owner;
+INSERT INTO public.owner_sessions(started_at, ended_at)
+VALUES (timestamptz '2024-01-01 10:00+00', timestamptz '2024-01-01 11:00+00');
+SELECT tci.create('public.owner_sessions'::regclass, 'started_at', 'ended_at') > 0 AS created;
+ created 
+---------
+ t
+(1 row)
+
+SELECT tci.count_at('public.owner_sessions'::regclass, timestamptz '2024-01-01 10:30+00') AS owner_count;
+ owner_count 
+-------------
+           1
+(1 row)
+
+-- Owner received admin EXECUTE via create()
+SELECT tci.seal_bounded('public.owner_sessions'::regclass, 8192) IS NULL AS owner_seal_empty_ok;
+ owner_seal_empty_ok 
+---------------------
+ t
+(1 row)
+
+SELECT (tci.health('public.owner_sessions'::regclass)).index_id IS NOT NULL AS owner_health;
+ owner_health 
+--------------
+ t
+(1 row)
+
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION tci_reader;
+SELECT tci.count_at('public.owner_sessions'::regclass, timestamptz '2024-01-01 10:30+00') AS reader_count;
+ reader_count 
+--------------
+            1
+(1 row)
+
+SELECT (tci.health('public.owner_sessions'::regclass)).n_tail IS NOT NULL AS reader_health;
+ reader_health 
+---------------
+ t
+(1 row)
+
+-- Admin APIs: no PUBLIC EXECUTE → permission denied (ACL), not require_admin body
+SELECT tci.seal('public.owner_sessions'::regclass); -- fail: no EXECUTE
+ERROR:  permission denied for function seal
+SELECT tci.compact_pairwise('public.owner_sessions'::regclass); -- fail: no EXECUTE
+ERROR:  permission denied for function compact_pairwise
+SELECT tci.maint_history('public.owner_sessions'::regclass); -- fail: no EXECUTE
+ERROR:  permission denied for function maint_history
+SELECT (tci.capacity('public.owner_sessions'::regclass)).index_id IS NOT NULL AS reader_capacity;
+ reader_capacity 
+-----------------
+ t
+(1 row)
+
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION tci_stranger;
+SELECT tci.count_at('public.owner_sessions'::regclass, timestamptz '2024-01-01 10:30+00'); -- fail: no SELECT
+ERROR:  pg_tci: permission denied for SELECT on public.owner_sessions
+CONTEXT:  PL/pgSQL function tci_internal.require_select(regclass) line 5 at RAISE
+SQL statement "SELECT tci_internal.require_select(source_table)"
+PL/pgSQL function count_at(regclass,timestamp with time zone) line 5 at PERFORM
+SELECT tci.shard_stats('public.owner_sessions'::regclass); -- fail: no SELECT
+ERROR:  pg_tci: permission denied for SELECT on public.owner_sessions
+CONTEXT:  PL/pgSQL function tci_internal.require_select(regclass) line 5 at RAISE
+SQL statement "SELECT tci_internal.require_select(source_table)"
+PL/pgSQL function tci.shard_stats(regclass) line 6 at PERFORM
+SELECT tci.health('public.owner_sessions'::regclass); -- fail: no SELECT
+ERROR:  pg_tci: permission denied for SELECT on public.owner_sessions
+CONTEXT:  PL/pgSQL function tci_internal.require_select(regclass) line 5 at RAISE
+SQL statement "SELECT tci_internal.require_select(source_table)"
+PL/pgSQL function tci.health(regclass) line 5 at PERFORM
+RESET SESSION AUTHORIZATION;
+DROP EXTENSION pg_tci CASCADE;
+NOTICE:  drop cascades to trigger tci_source_trig on table owner_sessions
+DROP TABLE public.owner_sessions;
+DROP ROLE tci_stranger;
+DROP ROLE tci_reader;
+DROP ROLE tci_owner;
