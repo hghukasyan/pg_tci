@@ -1,0 +1,85 @@
+-- Native filtered TCI regression (0.1.9)
+CREATE EXTENSION pg_tci;
+CREATE TABLE sessions (
+  id bigserial PRIMARY KEY,
+  segment text,
+  started_at timestamptz NOT NULL,
+  ended_at timestamptz
+);
+INSERT INTO sessions(segment, started_at, ended_at) VALUES
+  ('enterprise', '2024-01-01 10:00+00', '2024-01-01 11:00+00'),
+  ('enterprise', '2024-01-01 10:30+00', '2024-01-01 12:00+00'),
+  ('smb', '2024-01-01 10:00+00', '2024-01-01 12:00+00'),
+  (NULL, '2024-01-01 10:00+00', '2024-01-01 11:00+00');
+SELECT tci.create_filtered('sessions'::regclass, 'started_at', 'ended_at', 'segment', 'enterprise') > 0 AS created_e;
+ created_e 
+-----------
+ t
+(1 row)
+
+SELECT tci.create_filtered('sessions'::regclass, 'started_at', 'ended_at', 'segment', 'smb') > 0 AS created_s;
+ created_s 
+-----------
+ t
+(1 row)
+
+SELECT tci.create_filtered('sessions'::regclass, 'started_at', 'ended_at', 'segment', NULL) > 0 AS created_n;
+ created_n 
+-----------
+ t
+(1 row)
+
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'enterprise') AS e;
+ e 
+---
+ 1
+(1 row)
+
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'smb') AS s;
+ s 
+---
+ 1
+(1 row)
+
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', NULL) AS n;
+ n 
+---
+ 1
+(1 row)
+
+-- INSERT / move / DELETE
+INSERT INTO sessions(segment, started_at, ended_at)
+VALUES ('enterprise', '2024-01-01 10:05+00', '2024-01-01 10:50+00');
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'enterprise') AS e2;
+ e2 
+----
+  2
+(1 row)
+
+UPDATE sessions SET segment = 'smb' WHERE id = 1;
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'enterprise') AS e3;
+ e3 
+----
+  1
+(1 row)
+
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'smb') AS s3;
+ s3 
+----
+  2
+(1 row)
+
+DELETE FROM sessions WHERE id = 3;
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'smb') AS s4;
+ s4 
+----
+  1
+(1 row)
+
+-- Unregistered filter errors (never silent fallback to another index)
+\set VERBOSITY terse
+SELECT tci.count_at_filtered('sessions'::regclass, '2024-01-01 10:15+00', 'segment', 'ghost');
+ERROR:  pg_tci: no filtered index for public.sessions(segment=ghost) — call tci.create_filtered first
+DROP EXTENSION pg_tci CASCADE;
+NOTICE:  drop cascades to trigger tci_source_trig on table sessions
+DROP TABLE sessions;
