@@ -1,0 +1,54 @@
+-- 0.1.12: partitioned parent fan-out
+CREATE EXTENSION pg_tci;
+
+CREATE TABLE sess_pp (
+  id bigserial,
+  segment text NOT NULL,
+  started_at timestamptz NOT NULL,
+  ended_at timestamptz,
+  PRIMARY KEY (id, started_at)
+) PARTITION BY RANGE (started_at);
+
+CREATE TABLE sess_pp_a PARTITION OF sess_pp
+  FOR VALUES FROM ('2024-01-01') TO ('2024-07-01');
+CREATE TABLE sess_pp_b PARTITION OF sess_pp
+  FOR VALUES FROM ('2024-07-01') TO ('2025-01-01');
+
+INSERT INTO sess_pp(segment, started_at, ended_at) VALUES
+  ('enterprise', '2024-03-01 10:00+00', '2024-03-01 12:00+00'),
+  ('smb', '2024-03-01 11:00+00', NULL),
+  ('enterprise', '2024-09-01 10:00+00', '2024-09-01 11:00+00');
+
+SELECT count(*) = 2 AS two_leaves FROM tci.list_partition_leaves('sess_pp'::regclass);
+
+SELECT count(*) FILTER (WHERE action = 'created') = 2 AS created_two
+  FROM tci.create_partitioned('sess_pp'::regclass, 'started_at', 'ended_at');
+
+SELECT count(*) FILTER (WHERE action = 'created') = 2 AS filt_two
+  FROM tci.create_filtered_partitioned(
+    'sess_pp'::regclass, 'started_at', 'ended_at', 'segment', 'enterprise');
+
+-- Same-snapshot match vs native on parent
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT tci.count_at_partitioned('sess_pp'::regclass, '2024-03-01 11:30+00') =
+       (SELECT count(*) FROM sess_pp
+         WHERE started_at <= '2024-03-01 11:30+00'
+           AND (ended_at IS NULL OR ended_at > '2024-03-01 11:30+00')) AS match_unf;
+SELECT tci.count_at_filtered_partitioned(
+         'sess_pp'::regclass, '2024-03-01 11:30+00', 'segment', 'enterprise') =
+       (SELECT count(*) FROM sess_pp
+         WHERE segment = 'enterprise'
+           AND started_at <= '2024-03-01 11:30+00'
+           AND (ended_at IS NULL OR ended_at > '2024-03-01 11:30+00')) AS match_filt;
+COMMIT;
+
+-- Missing filter on new leaf → error
+CREATE TABLE sess_pp_c PARTITION OF sess_pp
+  FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+\set VERBOSITY terse
+SELECT tci.count_at_partitioned('sess_pp'::regclass, '2024-03-01 11:30+00');
+\set VERBOSITY default
+
+-- Drop heap first so CASCADE DETAIL order on extension is not flaky
+DROP TABLE sess_pp CASCADE;
+DROP EXTENSION pg_tci;
