@@ -1,0 +1,55 @@
+name: pg_tci Release
+
+# Tag-only publish (paths filters on ci.yml can skip pure tag pushes).
+on:
+  push:
+    tags:
+      - 'pg_tci-v*'
+      - 'v0.*'
+      - 'v1.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates gnupg lsb-release
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-server-dev-18
+
+      - name: Build release tarball
+        run: |
+          export PATH=/usr/lib/postgresql/18/bin:$PATH
+          export PG_CONFIG=/usr/lib/postgresql/18/bin/pg_config
+          ./scripts/make_release_tarball.sh
+          ls -la out/
+          tar -tzf out/*.tar.gz | grep -E 'lib/pg_tci\.so$'
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/*.tar.gz
+            out/*.sha256
+          body: |
+            pg_tci free open-source external preview (Linux x86_64).
+
+            PostgreSQL License. **Not production GA.** See
+            `docs/when-not-to-use.md` and `docs/limitations.md`.
+
+            Install: unpack → copy `lib/pg_tci.so` to pkglibdir → copy
+            `share/extension/*` to sharedir/extension → `CREATE EXTENSION pg_tci;`.
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
