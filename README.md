@@ -87,12 +87,26 @@ Cron sample: [`examples/maintain_cron.sh`](examples/maintain_cron.sh).
 
 ## Performance
 
-Warm COUNT on about 100k intervals. Same answer (100000). TCI about 0.046 ms,
-native about 2.061 ms on that cell:
+Warm COUNT on ~100k intervals. Same answer (`100000`), very different latency:
 
-![TablePlus microbench timings](docs/images/demo-latency.jpg)
+| | result | time |
+|--|--:|--:|
+| **`tci.count_at`** | 100000 | **0.046 ms** |
+| native `COUNT(*)` | 100000 | **2.061 ms** |
 
-More numbers: [`docs/benchmarks.md`](docs/benchmarks.md).
+**~45x faster** on that cell (**0.046 ms** vs **2.061 ms**).
+
+![TablePlus: 0.046 ms vs 2.061 ms](docs/images/demo-latency.jpg)
+
+Other cells (also ms):
+
+| cell | TCI | native |
+|--|--:|--:|
+| ~100k warm COUNT | **~0.046 ms** | **~2.06 ms** |
+| 1M, 50 readers, read-only | **~31 ms** | **~580 ms** |
+| 1M, 50 readers + ~5k writes/s | **~338 ms** | **~926 ms** |
+
+Details and how to reproduce: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Docs
 
