@@ -1,35 +1,34 @@
 # pg_tci
 
-**Temporal Coverage Index** — free open-source PostgreSQL extension for
-**exact** point-in-time interval coverage `COUNT`.
+PostgreSQL extension for exact coverage counts over time intervals.
 
-> **0.1.12 · external preview** · [PostgreSQL License](LICENSE)  
-> Not production GA. See [`docs/when-not-to-use.md`](docs/when-not-to-use.md).
+Version **0.1.12** (external preview, PostgreSQL License). Not production GA.
+If your workload is a bad fit, read [`docs/when-not-to-use.md`](docs/when-not-to-use.md) first.
 
-Same snapshot, same answer — `tci.count_at` vs native `COUNT(*)`:
+`tci.count_at` and a plain `COUNT(*)` on the same snapshot:
 
-![tci.count_at = 12847 matches native COUNT](docs/images/demo-count-at.jpg)
+![TablePlus: tci and native both return 12847](docs/images/demo-count-at.jpg)
 
 ```sql
 SELECT tci.count_at('sessions'::regclass, timestamptz '2024-06-01 12:00+00');
--- 12847
 ```
 
-Interval semantics: **`[start_at, end_at)`**. `NULL end_at` means open-ended.
+Intervals are `[start_at, end_at)`. `NULL end_at` means still open.
 
-Not an Index AM and not a planner rewrite — call `tci.count_at*` explicitly.
+This is not an Index AM and does not rewrite planner queries. You call
+`tci.count_at*` yourself.
 
 ## How it works
 
-![Architecture: sessions → delta tail + packed IAR → tci.count_at](docs/images/architecture.jpg)
+![sessions table, delta tail and packed IAR, then count_at](docs/images/architecture.jpg)
 
-A published index answers from packed TCIP v1 aggregates plus a small MVCC
-delta tail, merged under the caller’s snapshot. Invalid indexes **fail closed**
-to native `COUNT`.
+Published indexes answer from packed TCIP v1 runs plus a small MVCC delta tail,
+under the caller's snapshot. If the index is invalid or unpublished, the API
+falls back to native `COUNT` instead of returning a stale packed total.
 
 ## Install
 
-Requires **PostgreSQL 18** and superuser.
+Needs PostgreSQL 18 and a superuser install.
 
 ```bash
 export PG_CONFIG=$(which pg_config)
@@ -40,7 +39,7 @@ make clean && make && make install
 CREATE EXTENSION pg_tci;
 ```
 
-Linux binaries: [Releases](https://github.com/hghukasyan/pg_tci/releases).
+Linux tarballs are on [Releases](https://github.com/hghukasyan/pg_tci/releases).
 
 ## Quickstart
 
@@ -56,12 +55,12 @@ SELECT tci.count_at('sessions'::regclass, now());
 SELECT * FROM tci.stats('sessions'::regclass);
 ```
 
-### Filtered equality
+### Filtered counts
 
-Registered keys only (no arbitrary `WHERE`). Same answer as native filtered COUNT
-(**2144**):
+Only registered equality filters (no free-form `WHERE`). Here both sides return
+2144:
 
-![tci.count_at_filtered = 2144 matches native](docs/images/demo-filtered.jpg)
+![TablePlus: filtered tci and native both return 2144](docs/images/demo-filtered.jpg)
 
 ```sql
 SELECT tci.create_filtered(
@@ -73,7 +72,7 @@ SELECT tci.count_at_filtered(
 
 ## Monitoring
 
-![tci.health / tci.stats with tail_rows and status](docs/images/demo-health.jpg)
+![TablePlus: tci.health output](docs/images/demo-health.jpg)
 
 ```sql
 SELECT * FROM tci.health('sessions'::regclass);
@@ -82,31 +81,29 @@ SELECT tci.compact_pairwise('sessions'::regclass);
 SELECT * FROM tci.maintain('sessions'::regclass);
 ```
 
-Optional bgworker: `shared_preload_libraries = 'pg_tci'` and
-`pg_tci.enable_maintenance_worker = on`.  
-Cron example: [`examples/maintain_cron.sh`](examples/maintain_cron.sh).
+Optional bgworker: set `shared_preload_libraries = 'pg_tci'` and
+`pg_tci.enable_maintenance_worker = on`.
+Cron sample: [`examples/maintain_cron.sh`](examples/maintain_cron.sh).
 
-## Performance (representative)
+## Performance
 
-Warm COUNT on ~100k intervals — same result **100000**, TCI **0.046 ms** vs
-native **2.061 ms**:
+Warm COUNT on about 100k intervals. Same answer (100000). TCI about 0.046 ms,
+native about 2.061 ms on that cell:
 
-![\\timing: TCI 0.046 ms vs native 2.061 ms](docs/images/demo-latency.jpg)
+![TablePlus microbench timings](docs/images/demo-latency.jpg)
 
-More cells: [`docs/benchmarks.md`](docs/benchmarks.md).
+More numbers: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Docs
 
-| | |
-|--|--|
-| [`docs/quickstart.md`](docs/quickstart.md) | Getting started |
-| [`docs/api.md`](docs/api.md) | Public API |
-| [`docs/architecture.md`](docs/architecture.md) | Design |
-| [`docs/operations.md`](docs/operations.md) | Ops / maintenance |
-| [`docs/limitations.md`](docs/limitations.md) | Limits |
-| [`docs/benchmarks.md`](docs/benchmarks.md) | Numbers |
-| [`docs/when-not-to-use.md`](docs/when-not-to-use.md) | Fit filter |
-| [`CHANGELOG.md`](CHANGELOG.md) | Release notes |
+- [`docs/quickstart.md`](docs/quickstart.md)
+- [`docs/api.md`](docs/api.md)
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/operations.md`](docs/operations.md)
+- [`docs/limitations.md`](docs/limitations.md)
+- [`docs/benchmarks.md`](docs/benchmarks.md)
+- [`docs/when-not-to-use.md`](docs/when-not-to-use.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
 
 ## Tests
 
@@ -116,4 +113,5 @@ make installcheck
 
 ## License
 
-[PostgreSQL License](LICENSE) · [`SECURITY.md`](SECURITY.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md)
+[PostgreSQL License](LICENSE). See also [`SECURITY.md`](SECURITY.md) and
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
