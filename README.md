@@ -5,9 +5,10 @@ PostgreSQL extension for exact coverage counts over time intervals.
 Version **0.1.12** (external preview, PostgreSQL License). Not production GA.
 If your workload is a bad fit, read [`docs/when-not-to-use.md`](docs/when-not-to-use.md) first.
 
-`tci.count_at` and a plain `COUNT(*)` on the same snapshot:
+`tci.count_at` and a plain `COUNT(*)` on the same snapshot (same answer, different
+**ms**):
 
-![TablePlus: tci and native both return 12847](docs/images/demo-count-at.jpg)
+![TablePlus: 12847 vs 12847, tci ~0.051 ms vs native ~2.14 ms](docs/images/demo-count-at.jpg)
 
 ```sql
 SELECT tci.count_at('sessions'::regclass, timestamptz '2024-06-01 12:00+00');
@@ -57,10 +58,10 @@ SELECT * FROM tci.stats('sessions'::regclass);
 
 ### Filtered counts
 
-Only registered equality filters (no free-form `WHERE`). Here both sides return
-2144:
+Only registered equality filters (no free-form `WHERE`). Same answer **2144**,
+timing about **0.105 ms** vs **0.972 ms**:
 
-![TablePlus: filtered tci and native both return 2144](docs/images/demo-filtered.jpg)
+![TablePlus: 2144 vs 2144, ~0.105 ms vs ~0.972 ms](docs/images/demo-filtered.jpg)
 
 ```sql
 SELECT tci.create_filtered(
