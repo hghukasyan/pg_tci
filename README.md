@@ -6,10 +6,13 @@
 > **0.1.12 · external preview** · [PostgreSQL License](LICENSE)  
 > Not production GA. See [`docs/when-not-to-use.md`](docs/when-not-to-use.md).
 
-![tci.count_at vs native COUNT](docs/images/demo-count-at.jpg)
+Same snapshot, same answer — `tci.count_at` vs native `COUNT(*)`:
+
+![tci.count_at = 12847 matches native COUNT](docs/images/demo-count-at.jpg)
 
 ```sql
 SELECT tci.count_at('sessions'::regclass, timestamptz '2024-06-01 12:00+00');
+-- 12847
 ```
 
 Interval semantics: **`[start_at, end_at)`**. `NULL end_at` means open-ended.
@@ -18,7 +21,7 @@ Not an Index AM and not a planner rewrite — call `tci.count_at*` explicitly.
 
 ## How it works
 
-![Architecture: source table → delta tail → packed IAR → count_at](docs/images/architecture.jpg)
+![Architecture: sessions → delta tail + packed IAR → tci.count_at](docs/images/architecture.jpg)
 
 A published index answers from packed TCIP v1 aggregates plus a small MVCC
 delta tail, merged under the caller’s snapshot. Invalid indexes **fail closed**
@@ -53,18 +56,24 @@ SELECT tci.count_at('sessions'::regclass, now());
 SELECT * FROM tci.stats('sessions'::regclass);
 ```
 
-Filtered equality (registered keys only):
+### Filtered equality
+
+Registered keys only (no arbitrary `WHERE`). Same answer as native filtered COUNT
+(**2144**):
+
+![tci.count_at_filtered = 2144 matches native](docs/images/demo-filtered.jpg)
 
 ```sql
 SELECT tci.create_filtered(
   'sessions'::regclass, 'started_at', 'ended_at', 'segment', 'enterprise');
 SELECT tci.count_at_filtered(
-  'sessions'::regclass, now(), 'segment', 'enterprise');
+  'sessions'::regclass, timestamptz '2024-06-01 12:00+00',
+  'segment', 'enterprise');
 ```
 
 ## Monitoring
 
-![tci.health / tci.stats](docs/images/demo-health.jpg)
+![tci.health / tci.stats with tail_rows and status](docs/images/demo-health.jpg)
 
 ```sql
 SELECT * FROM tci.health('sessions'::regclass);
@@ -79,9 +88,12 @@ Cron example: [`examples/maintain_cron.sh`](examples/maintain_cron.sh).
 
 ## Performance (representative)
 
-![Warm COUNT microbench: TCI vs native](docs/images/demo-latency.jpg)
+Warm COUNT on ~100k intervals — same result **100000**, TCI **0.046 ms** vs
+native **2.061 ms**:
 
-Numbers and reproduction: [`docs/benchmarks.md`](docs/benchmarks.md).
+![\\timing: TCI 0.046 ms vs native 2.061 ms](docs/images/demo-latency.jpg)
+
+More cells: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Docs
 
